@@ -21,12 +21,25 @@ Transform Medical Records with AI. Generate professional, academic-grade admissi
 
 ## 🌐 部署 (Deployment)
 
-本專案已設定 GitHub Actions。
+本專案已設定 GitHub Actions 自動部署到 GitHub Pages。
 
-1.  將程式碼推送到 GitHub 的 `main` 或 `master` 分支。
+### 設定步驟
+
+1.  將程式碼推送到 GitHub 的 `main` 分支。
 2.  前往 GitHub Repository 的 **Settings** > **Pages**。
-3.  在 **Build and deployment** 區塊，將 Source 設定為 **GitHub Actions**。
-4.  等待 Action 執行完畢，即可在 GitHub Pages 網址看到成果。
+3.  在 **Build and deployment** 區塊：
+    - **Source**: 選擇 `GitHub Actions`
+4.  之後每次推送到 `main` 分支，GitHub Actions 將會自動建置並部署最新版本。
+
+### 手動部署 (Optional)
+
+若需手動建置：
+
+```bash
+npm run build
+```
+
+建置產物位於 `dist` 資料夾。
 
 ## ⚠️ Firebase 設定提醒
 
