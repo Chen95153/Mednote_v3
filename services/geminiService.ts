@@ -1,55 +1,70 @@
-
 import { GoogleGenAI } from "@google/genai";
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../firebaseConfig';
 import { SYSTEM_INSTRUCTION } from '../constants';
 
-// Helper to create client with dynamic key
-const createClient = (apiKey: string) => {
-    return new GoogleGenAI({ apiKey });
+// Central Helper for calls
+const getGeminiResponse = async (params: {
+  model?: string,
+  contents: any,
+  config?: any
+}, apiKey?: string) => {
+  // 1. BYOK Path
+  if (apiKey && apiKey.trim().length > 30) {
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model: params.model || 'gemini-1.5-flash',
+      contents: params.contents,
+      config: params.config
+    });
+    // In v1.34 SDK, response.text is a property/getter
+    return response.text;
+  }
+  // 2. Proxy Path (Free Trial)
+  else {
+    const callProxy = httpsCallable(functions, 'callGeminiProxy');
+    const result = await callProxy({
+      model: params.model || 'gemini-1.5-flash',
+      contents: params.contents,
+      config: params.config
+    });
+    const data = result.data as { text: string };
+    return data.text;
+  }
 };
 
-// Helper to detect API Key errors
 const getErrorMessage = (error: any): string => {
-    const errorMsg = error.message || error.toString();
-    // Google API often returns 400 for invalid argument (bad key format) or 403 for permission denied (invalid key value)
-    if (errorMsg.includes('400') || errorMsg.includes('403') || errorMsg.toLowerCase().includes('api key')) {
-        return "Error: Invalid API Key. Please verify your key in settings.";
-    }
-    return "Error generating note. Please check the console for details.";
+  const errorMsg = error.message || error.toString();
+  if (errorMsg.includes('400') || errorMsg.includes('403') || errorMsg.toLowerCase().includes('api key')) {
+    return "Error: Invalid API Key or Quota Limit.";
+  }
+  return `Error: ${errorMsg}`;
 };
 
 export const generateAdmissionNote = async (data: any, apiKey: string): Promise<string> => {
-  if (!apiKey) return "Error: API Key is missing.";
-  const ai = createClient(apiKey);
-
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+    const responseText = await getGeminiResponse({
+      model: 'gemini-1.5-flash', // Switched to stable model
       contents: JSON.stringify(data),
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
         temperature: 0.3,
-      },
-    });
+      }
+    }, apiKey);
 
-    return response.text || "Error: No response generated.";
+    return responseText || "Error: No response generated.";
   } catch (error) {
     console.error("Error generating note:", error);
     return getErrorMessage(error);
   }
 };
 
-/**
- * Refines the entire note based on user instructions, current draft, and original data.
- */
 export const refineFullNote = async (
   originalData: any,
   currentNote: string,
   instruction: string,
   apiKey: string
 ): Promise<string> => {
-  if (!apiKey) return currentNote;
-  const ai = createClient(apiKey);
-
   const refinePrompt = `
     You are a medical scribe assistant. 
     ORIGINAL DATA SOURCE (JSON): ${JSON.stringify(originalData)}
@@ -69,22 +84,19 @@ export const refineFullNote = async (
   `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+    const responseText = await getGeminiResponse({
+      model: 'gemini-1.5-flash',
       contents: refinePrompt,
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
         temperature: 0.4,
-      },
-    });
+      }
+    }, apiKey);
 
-    return response.text || currentNote;
+    return responseText || currentNote;
   } catch (error) {
     console.error("Error refining full note:", error);
-    const msg = getErrorMessage(error);
-    // If it's a critical API key error, return that so the user sees it in the editor
-    if (msg.includes("Invalid API Key")) return msg;
-    return currentNote;
+    return getErrorMessage(error);
   }
 };
 
@@ -95,9 +107,6 @@ export const refineNoteSegment = async (
   instruction: string,
   apiKey: string
 ): Promise<string> => {
-  if (!apiKey) return selectedSegment;
-  const ai = createClient(apiKey);
-
   const refinePrompt = `
     You are a medical scribe assistant. 
     ORIGINAL DATA SOURCE (JSON): ${JSON.stringify(originalData)}
@@ -121,20 +130,18 @@ export const refineNoteSegment = async (
   `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+    const responseText = await getGeminiResponse({
+      model: 'gemini-1.5-flash',
       contents: refinePrompt,
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
         temperature: 0.4,
-      },
-    });
+      }
+    }, apiKey);
 
-    return response.text?.trim() || selectedSegment;
+    return responseText?.trim() || selectedSegment;
   } catch (error) {
     console.error("Error refining segment:", error);
-    const msg = getErrorMessage(error);
-    if (msg.includes("Invalid API Key")) return msg;
-    return selectedSegment;
+    return getErrorMessage(error);
   }
 };
